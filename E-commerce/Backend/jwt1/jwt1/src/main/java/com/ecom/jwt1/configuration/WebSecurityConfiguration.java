@@ -7,94 +7,67 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-
-
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true )
-// @EnableMethodSecurity(prePostEnabled = true) // ✅ replaces EnableGlobalMethodSecurity
-public class WebSecurityConfiguration extends WebSecurityConfigurerAdapter {
-   
+@EnableMethodSecurity(prePostEnabled = true) // replaces @EnableGlobalMethodSecurity
+public class WebSecurityConfiguration {
+
     @Autowired
-    private JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
+    private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
+    @Autowired
+    private JwtRequestFilter jwtRequestFilter;
+
+    @Autowired
+    private UserDetailsService jwtService;
+
+    // ✅ Password encoder
     @Bean
-    @Override
-    public AuthenticationManager authenticationManagerBean() throws Exception{
-         return super.authenticationManagerBean();
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
-
-    @Override
-    protected void configure(HttpSecurity httpSecurity){
-            httpSecurity.cors();
-            httpSecurity.csrf().disable();
-            .authorizeRequests().antMatchers().permitAll()
-            .antMatchers(HttpHeaders.ALLOW).permitAll()
-            .anyRequest().authenticated()
-            .and()
-            .exceptionHandling().authenticationEntryPoint(jwtAuthenticationEntryPoint)
-            .and()
-            .sessionsManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            ;
-
-            httpSecurity.addFilterBefore()
-
+    // ✅ Authentication provider (Dao)
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(jwtService);
+        provider.setPasswordEncoder(passwordEncoder());
+        return provider;
     }
-    // // ✅ Main security filter chain
-    // @Bean
-    // public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    //     http
-    //         .csrf(csrf -> csrf.disable()) // disable CSRF for APIs
-    //         .authorizeHttpRequests(auth -> auth
-    //             .requestMatchers("/auth/**").permitAll() // allow login/register endpoints
-    //             .anyRequest().authenticated()            // secure everything else
-    //         )
-    //         .exceptionHandling(ex -> ex
-    //             .authenticationEntryPoint(new JwtAuthenticationEntryPoint()) // your custom entrypoint
-    //         );
-    //     return http.build();
-    // }
 
-    // // ✅ AuthenticationManager (needed for login/authentication)
-    // @Bean
-    // public AuthenticationManager authenticationManager(
-    //         org.springframework.security.authentication.AuthenticationConfiguration config) throws Exception {
-    //     return config.getAuthenticationManager();
-    // }
+    // ✅ AuthenticationManager Bean
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
 
-    // // ✅ Password encoder (BCrypt recommended)
-    // @Bean
-    // public PasswordEncoder passwordEncoder() {
-    //     return new BCryptPasswordEncoder();
-    // }
+    // ✅ Security filter chain (main security config)
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/auth/**").permitAll() // allow login/register endpoints
+                .anyRequest().authenticated()
+            )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+            )
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS)
+            );
 
-    // // (Optional) Example of AuthenticationProvider setup
-    // @Bean
-    // public AuthenticationProvider authenticationProvider() {
-    //     DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-    //     // provider.setUserDetailsService(yourUserDetailsService);
-    //     provider.setPasswordEncoder(passwordEncoder());
-    //     return provider;
-    // }
+        http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
